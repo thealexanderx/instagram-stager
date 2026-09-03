@@ -12,9 +12,22 @@
 .hint {
   color: var(--ig-muted);
   font-size: 13px;
-  margin: 0 0 16px;
+  margin: 0 0 8px;
   text-align: center;
   max-width: var(--phone);
+}
+
+.tools {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: var(--phone);
+  margin: 0 0 16px;
+}
+
+.tools .pill:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .phone {
@@ -34,6 +47,11 @@
   }
   .hint {
     display: none;
+  }
+  .tools {
+    max-width: none;
+    padding: 8px 12px 0;
+    margin: 0;
   }
   .phone {
     max-width: none;
@@ -112,6 +130,11 @@
   );
   cursor: pointer;
   justify-self: center;
+}
+
+.avatar-wrap.over {
+  outline: 2px solid var(--ig-blue);
+  outline-offset: 2px;
 }
 
 .avatar-inner {
