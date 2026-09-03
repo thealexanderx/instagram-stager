@@ -1,4 +1,4 @@
-import { defaultProfile, MIN_CELLS, type Profile } from './types'
+import { defaultProfile, type Profile } from './types'
 
 const DB_NAME = 'instagram-stager'
 const DB_VERSION = 1
@@ -53,28 +53,77 @@ export async function deleteBlob(id: string): Promise<void> {
   db.close()
 }
 
+function collectIds(profile: Profile): string[] {
+  const ids = [
+    profile.avatarId,
+    ...profile.highlights.map((h) => h.photoId),
+    ...profile.grid,
+  ]
+  return [...new Set(ids.filter((id): id is string => Boolean(id)))]
+}
+
 export function loadProfile(): Profile {
+  const base = defaultProfile()
   try {
     const raw = localStorage.getItem(PROFILE_KEY)
-    if (!raw) return defaultProfile()
+    if (!raw) return base
     const parsed = JSON.parse(raw) as Partial<Profile>
-    const base = defaultProfile()
     return {
       ...base,
       ...parsed,
       highlights: parsed.highlights?.length ? parsed.highlights : base.highlights,
-      grid:
-        Array.isArray(parsed.grid) && parsed.grid.length >= MIN_CELLS
-          ? parsed.grid
-          : base.grid,
+      grid: Array.isArray(parsed.grid) ? parsed.grid : base.grid,
     }
   } catch {
-    return defaultProfile()
+    return base
   }
 }
 
 export function saveProfile(profile: Profile): void {
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profile))
+}
+
+export async function exportStage(profile: Profile): Promise<void> {
+  const blobs: Record<string, { type: string; data: string }> = {}
+  for (const id of collectIds(profile)) {
+    const blob = await getBlob(id)
+    if (!blob) continue
+    const data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = String(reader.result)
+        const comma = result.indexOf(',')
+        resolve(comma >= 0 ? result.slice(comma + 1) : result)
+      }
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(blob)
+    })
+    blobs[id] = { type: blob.type || 'image/jpeg', data }
+  }
+  const payload = JSON.stringify({ version: 1, profile, blobs })
+  const file = new Blob([payload], { type: 'application/json' })
+  const url = URL.createObjectURL(file)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'instagram-stager-backup.json'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export async function importStage(file: File): Promise<Profile> {
+  const parsed = JSON.parse(await file.text()) as {
+    profile: Profile
+    blobs?: Record<string, { type: string; data: string }>
+  }
+  if (!parsed?.profile) throw new Error('Not a stager backup')
+  for (const [id, rec] of Object.entries(parsed.blobs ?? {})) {
+    const bin = atob(rec.data)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    await putBlob(id, new Blob([bytes], { type: rec.type || 'image/jpeg' }))
+  }
+  saveProfile(parsed.profile)
+  return parsed.profile
 }
 
 export function newId(): string {
