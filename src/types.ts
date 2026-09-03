@@ -21,8 +21,8 @@ export const COLS = 3
 export const MIN_CELLS = 9
 
 export const defaultProfile = (): Profile => ({
-  displayName: 'Your Name',
-  username: 'yourname',
+  displayName: 'Alexander Arnold',
+  username: 'thealexanderx',
   bio: 'Stage your grid before you post.\nDrop photos into the squares below.',
   website: '',
   posts: '0',
