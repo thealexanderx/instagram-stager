@@ -14,7 +14,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import './App.css'
 import {
   deleteBlob,
+  exportStage,
   IMAGE_ACCEPT,
+  importStage,
   isImageFile,
   loadProfile,
   newId,
@@ -109,8 +111,10 @@ export default function App() {
   const fileRef = useRef<HTMLInputElement>(null)
   const avatarRef = useRef<HTMLInputElement>(null)
   const highlightRef = useRef<HTMLInputElement>(null)
+  const backupRef = useRef<HTMLInputElement>(null)
   const dropIndexRef = useRef<number | null>(null)
   const highlightTarget = useRef<string | null>(null)
+  const [avatarOver, setAvatarOver] = useState(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -171,6 +175,17 @@ export default function App() {
     [profile, update],
   )
 
+  const shiftForNewPost = useCallback(() => {
+    update((p) => ({ ...p, grid: padGrid([null, ...p.grid]) }))
+  }, [update])
+
+  const undoShift = useCallback(() => {
+    update((p) => {
+      if (p.grid[0] !== null) return p
+      return { ...p, grid: padGrid(p.grid.slice(1)) }
+    })
+  }, [update])
+
   const onDragStart = (event: DragStartEvent) => {
     const id = String(event.active.id)
     if (id.startsWith('photo:')) setActivePhoto(id.slice(6))
@@ -229,8 +244,21 @@ export default function App() {
   return (
     <div className="stage">
       <p className="hint">
-        Local Instagram stager — drop photos onto the grid. Everything stays in this browser.
+        Photos stay in this browser when the code updates. Export a backup from Edit profile if you want a file copy.
       </p>
+      <div className="tools">
+        <button className="pill" type="button" onClick={shiftForNewPost}>
+          Shift for new post
+        </button>
+        <button
+          className="pill"
+          type="button"
+          onClick={undoShift}
+          disabled={profile.grid[0] !== null}
+        >
+          Undo shift
+        </button>
+      </div>
       <div className="phone">
         <header className="topbar">
           <div className="topbar-user">
@@ -250,16 +278,36 @@ export default function App() {
         </header>
 
         <section className="header">
-          <button
-            className="avatar-wrap"
-            type="button"
+          <div
+            className={`avatar-wrap${avatarOver ? ' over' : ''}`}
+            role="button"
+            tabIndex={0}
             onClick={() => avatarRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') avatarRef.current?.click()
+            }}
+            onDragOver={(e) => {
+              if ([...e.dataTransfer.types].includes('Files')) {
+                e.preventDefault()
+                setAvatarOver(true)
+              }
+            }}
+            onDragLeave={() => setAvatarOver(false)}
+            onDrop={(e) => {
+              const file = e.dataTransfer.files[0]
+              if (file) {
+                e.preventDefault()
+                e.stopPropagation()
+                setAvatarOver(false)
+                void onAvatar(file)
+              }
+            }}
             aria-label="Change profile photo"
           >
             <div className="avatar-inner">
               <AvatarImage id={profile.avatarId} />
             </div>
-          </button>
+          </div>
           <div className="stats">
             <div className="stat">
               <b>{profile.posts}</b>
@@ -400,6 +448,26 @@ export default function App() {
             setEditing(false)
             setDraft(null)
           }}
+          onExport={() => {
+            if (profile) void exportStage(profile)
+          }}
+          onImport={() => backupRef.current?.click()}
+        />
+        <input
+          ref={backupRef}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (!file) return
+            void importStage(file).then((next) => {
+              setProfile(next)
+              setEditing(false)
+              setDraft(null)
+            })
+          }}
         />
       ) : null}
     </div>
@@ -516,11 +584,15 @@ function EditSheet({
   onChange,
   onClose,
   onSave,
+  onExport,
+  onImport,
 }: {
   value: Profile
   onChange: (p: Profile) => void
   onClose: () => void
   onSave: () => void
+  onExport: () => void
+  onImport: () => void
 }) {
   const set = (patch: Partial<Profile>) => onChange({ ...value, ...patch })
   const highlights = useMemo(() => value.highlights, [value.highlights])
@@ -582,6 +654,17 @@ function EditSheet({
             />
           </label>
         ))}
+        <p className="field">
+          Photos live in this browser, not in Git. Export a backup before clearing site data.
+        </p>
+        <div className="sheet-actions">
+          <button className="pill" type="button" onClick={onExport}>
+            Export backup
+          </button>
+          <button className="pill" type="button" onClick={onImport}>
+            Import backup
+          </button>
+        </div>
         <div className="sheet-actions">
           <button className="pill" type="button" onClick={onClose}>
             Cancel
